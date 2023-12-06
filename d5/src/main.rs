@@ -128,13 +128,14 @@ fn main() {
 
     assert!(values.len() % 2 == 0);
 
-    let smin: Mutex<i64> = Mutex::new(0);
     let mut k = 0;
 
+    let mut min = 0;
+
     while k < values.len() {
-        (values[k]..values[k + 1] + values[k])
+        min = (values[k]..values[k + 1] + values[k])
             .into_par_iter()
-            .for_each(|seed| {
+            .map(|seed| {
                 //println!("s! {}", seed);
                 let mut values = vec![seed];
                 let mut current_target = "seed";
@@ -145,17 +146,14 @@ fn main() {
                     current_target = lk.to.as_str();
                 }
 
-                let mut min = smin.lock().unwrap();
-
-                if *min == 0 || (values[0] < *min) {
-                    *min = values[0];
-                }
-            });
+                values[0]
+            })
+            .min()
+            .unwrap();
         println!("Seed {} done", values[k]);
 
         k += 2;
     }
 
-    let min = smin.lock().unwrap();
-    println!("Part 2 min is {}", *min);
+    println!("Part 2 min is {}", min);
 }
