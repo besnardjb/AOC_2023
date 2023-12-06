@@ -7,6 +7,7 @@ use std::collections::HashSet;
 #[derive(Debug, Clone)]
 struct Card {
     id: i32,
+    matches: i32,
     candi: HashSet<i32>,
     win: HashSet<i32>,
 }
@@ -43,6 +44,7 @@ impl Card {
             id,
             candi: HashSet::new(),
             win: HashSet::new(),
+            matches: 0,
         };
 
         for v in candi.iter() {
@@ -53,12 +55,14 @@ impl Card {
             ret.win.insert(*v);
         }
 
-        println!("{:?} {}", ret, ret.score());
+        ret.matches = ret._num_matching();
+
+        //println!("{:?} {} {}", ret, ret.score(), ret.matches);
 
         ret
     }
 
-    fn num_matching(&self) -> i32 {
+    fn _num_matching(&self) -> i32 {
         let mut score = 0;
 
         for v in self.candi.iter() {
@@ -91,7 +95,7 @@ fn unfold_winning_cards(cards: &Vec<Card>, card: &Card) -> i32 {
 
     ret += 1;
 
-    for j in 1..card.num_matching() + 1 {
+    for j in 1..card.matches + 1 {
         if let Some(new_card) = cards.get((card.id - 1) as usize + j as usize) {
             ret += unfold_winning_cards(cards, new_card);
         }
