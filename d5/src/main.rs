@@ -1,6 +1,8 @@
+use rayon::prelude::*;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufReader, Read};
+use std::sync::Mutex;
 
 fn load_num_list(data: &str) -> Vec<i64> {
     let mut ret: Vec<i64> = Vec::new();
@@ -126,34 +128,34 @@ fn main() {
 
     assert!(values.len() % 2 == 0);
 
-    let mut smin: i64 = 0;
+    let smin: Mutex<i64> = Mutex::new(0);
     let mut k = 0;
 
     while k < values.len() {
-        let mut left = values[k + 1];
-        for seed in values[k]..values[k + 1] + values[k] {
-            //println!("s! {}", seed);
-            let mut values = vec![seed];
-            let mut current_target = "seed";
+        (values[k]..values[k + 1] + values[k])
+            .into_par_iter()
+            .for_each(|seed| {
+                //println!("s! {}", seed);
+                let mut values = vec![seed];
+                let mut current_target = "seed";
 
-            while let Some(lk) = converters.get(current_target) {
-                //println!("{} -> {}", lk.from, lk.to);
-                values = values.iter().map(|v| lk.resolve(v)).collect();
-                current_target = lk.to.as_str();
-            }
+                while let Some(lk) = converters.get(current_target) {
+                    //println!("{} -> {}", lk.from, lk.to);
+                    values = values.iter().map(|v| lk.resolve(v)).collect();
+                    current_target = lk.to.as_str();
+                }
 
-            if smin == 0 || (values[0] < smin) {
-                smin = values[0];
-            }
-            left -= 1;
-            if (left % 1000000) == 0 {
-                println!("Left {}", left)
-            }
-        }
+                let mut min = smin.lock().unwrap();
+
+                if *min == 0 || (values[0] < *min) {
+                    *min = values[0];
+                }
+            });
         println!("Seed {} done", values[k]);
 
         k += 2;
     }
 
-    println!("Part 2 min is {}", smin);
+    let min = smin.lock().unwrap();
+    println!("Part 2 min is {}", *min);
 }
