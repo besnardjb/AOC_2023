@@ -2,7 +2,6 @@ use rayon::prelude::*;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufReader, Read};
-use std::sync::Mutex;
 
 fn load_num_list(data: &str) -> Vec<i64> {
     let mut ret: Vec<i64> = Vec::new();
