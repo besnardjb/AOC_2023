@@ -1,5 +1,8 @@
 use std::fs::File;
 use std::io::{BufReader, Read};
+use std::usize;
+
+use array2d::Array2D;
 
 struct Map {
     d: Vec<Vec<u8>>,
@@ -211,166 +214,84 @@ impl Map {
         ret
     }
 
-    fn transpose(v: &[Vec<Option<(i64, i64)>>]) -> Vec<Vec<Option<(i64, i64)>>> {
-        /* Now transpose and redo */
-        let mut t_map: Vec<Vec<Option<(i64, i64)>>> = Vec::new();
-
-        for i in 0..v[0].len() {
-            let l: Vec<Option<(i64, i64)>> = v.iter().map(|v| v[i]).collect();
-            t_map.push(l);
-        }
-
-        t_map
-    }
-
-    fn print_dir(d: Option<(i64, i64)>) {
-        let v = match d.unwrap_or((-9, -9)) {
-            (-9, -9) => ".",
-            (-2, -2) => "◦",
-            (-1, 0) => "◂",
-            (1, 0) => "▸",
-            (0, 1) => "▾",
-            (0, -1) => "▴",
-            _ => "?",
-        };
-        print!("{}", v);
-    }
-
-    fn print_dir_field(loop_map: &[Vec<Option<(i64, i64)>>]) {
+    fn print_2d_map(loop_map: &Array2D<i32>) {
         println!("====");
 
-        for l in loop_map.iter() {
-            for v in l.iter() {
-                Map::print_dir(*v);
+        for x in 0..loop_map.column_len() + 1 {
+            for y in 0..loop_map.row_len() + 1 {
+                if let Some(v) = loop_map.get(x, y) {
+                    print!("{}", v);
+                }
             }
             println!();
         }
     }
 
-    fn filter_holes(i: &[Vec<Option<(i64, i64)>>]) -> Vec<Vec<Option<(i64, i64)>>> {
-        let mut ret: Vec<Vec<Option<(i64, i64)>>> = Vec::new();
+    fn count_circled_ground(loop_map: &Array2D<i32>) -> usize {
+        println!("====");
 
-        for l in i.iter() {
-            let line: Vec<Option<(i64, i64)>> = l
-                .iter()
-                .map(|v| match v {
-                    Some((-2, -2)) => Some((-2, -2)),
-                    _ => None,
-                })
-                .collect();
-            ret.push(line);
-        }
-
-        ret
+        loop_map
+            .elements_row_major_iter()
+            .filter(|v| **v == 0)
+            .count()
     }
 
-    fn count_holes(i: &[Vec<Option<(i64, i64)>>]) -> usize {
-        let mut ret = 0;
+    fn propagate_ground(array: &mut Array2D<i32>, x: i64, y: i64) {
+        for xx in -1..2 {
+            for yy in -1..2 {
+                if let Some(v) = array.get_mut((x + xx) as usize, (y + yy) as usize) {
+                    if *v == 0 {
+                        /* Propagated ground */
+                        *v = 7;
 
-        for l in i.iter() {
-            let line = l
-                .iter()
-                .filter(|v| v.is_some())
-                .filter(|v| v.unwrap() == (-2, -2))
-                .count();
-            ret += line;
-        }
-
-        ret
-    }
-
-    fn print_bool_field(loop_map: &[Vec<bool>]) {
-        for l in loop_map.iter() {
-            for v in l.iter() {
-                print!("{}", *v as i32);
+                        Map::propagate_ground(array, x + xx, y + yy);
+                    }
+                }
             }
-            println!();
         }
     }
 
     fn find_area(&self) -> usize {
-        let mut loop_map: Vec<Vec<Option<(i64, i64)>>> = Vec::new();
+        println!("{} x {}", self.w, self.h);
 
-        for _ in 0..self.h {
-            let v: Vec<Option<(i64, i64)>> = vec![None; self.w as usize];
-            loop_map.push(v);
+        let mut prefilled = Array2D::filled_with(0, self.h as usize, self.w as usize);
+
+        /* Map the loop in the array */
+        for lp in self.find_loop() {
+            let p = prefilled.get_mut(lp.1 as usize, lp.0 as usize).unwrap();
+            *p = 1;
         }
 
-        /* Now mark the loop */
-        let lp = self.find_loop();
+        Map::print_2d_map(&prefilled);
 
-        for p in lp.iter() {
-            if let Some(l) = loop_map.get_mut(p.1 as usize) {
-                if let Some(v) = l.get_mut(p.0 as usize) {
-                    *v = Some(p.2);
-                }
+        /* Now propagate borders */
+        for x in 0..self.h {
+            let l = self.d.get(x as usize).unwrap();
+            for y in [0, self.w - 1] {
+                Map::propagate_ground(&mut prefilled, x, y);
             }
         }
 
-        Map::print_dir_field(&loop_map);
+        for x in [0, self.h - 1] {
+            let l = self.d.get(x as usize).unwrap();
+            for y in 0..self.w {
+                Map::propagate_ground(&mut prefilled, x, y);
+            }
+        }
+        Map::print_2d_map(&prefilled);
 
-        let mut dir1_map = loop_map.clone();
-
-        for l in dir1_map.iter_mut() {
-            let mut in_loop = false;
-            let mut last_dir: (i64, i64) = (-10, -10);
-            for v in l.iter_mut() {
-                if v.is_some() {
-                    let dir = v.unwrap();
-                    if dir != last_dir {
-                        in_loop = !in_loop;
-                        last_dir = dir;
+        /* Now shadow all pipes */
+        for (x, l) in self.d.iter().enumerate() {
+            for (y, v) in l.iter().enumerate() {
+                if *v != b'.' {
+                    if let Some(vv) = prefilled.get_mut(x, y) {
+                        //*vv = 7;
                     }
                 }
-
-                if in_loop && v.is_none() {
-                    *v = Some((-2, -2));
-                }
             }
         }
 
-        Map::print_dir_field(&dir1_map);
-
-        let mut loop_map = Map::transpose(&loop_map);
-
-        for l in loop_map.iter_mut() {
-            let mut in_loop = false;
-            let mut last_dir: (i64, i64) = (-10, -10);
-            for v in l.iter_mut() {
-                if v.is_some() {
-                    let dir = v.unwrap();
-                    if dir != last_dir {
-                        in_loop = !in_loop;
-                        last_dir = dir;
-                    }
-                }
-
-                if in_loop && v.is_none() {
-                    *v = Some((-2, -2));
-                }
-            }
-        }
-
-        let dir2_map = Map::transpose(&loop_map);
-
-        Map::print_dir_field(&dir2_map);
-
-        /* Now mix the two directions */
-        let mut dir1_holes = Map::filter_holes(&dir1_map);
-        let dir2_holes = Map::filter_holes(&dir2_map);
-
-        for (x, l) in dir1_holes.iter_mut().enumerate() {
-            for (y, v) in l.iter_mut().enumerate() {
-                let dir2val = dir2_holes.get(x).unwrap().get(y).unwrap();
-                if v != dir2val {
-                    *v = None;
-                }
-            }
-        }
-
-        Map::print_dir_field(&dir1_holes);
-
-        Map::count_holes(&dir1_holes)
+        Map::count_circled_ground(&prefilled)
     }
 }
 
