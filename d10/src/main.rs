@@ -214,84 +214,95 @@ impl Map {
         ret
     }
 
-    fn print_2d_map(loop_map: &Array2D<i32>) {
+    fn print_2d_map(loop_map: &Array2D<u8>) {
         println!("====");
 
         for x in 0..loop_map.column_len() + 1 {
             for y in 0..loop_map.row_len() + 1 {
                 if let Some(v) = loop_map.get(x, y) {
-                    print!("{}", v);
+                    print!("{}", *v as char);
                 }
             }
             println!();
         }
     }
 
-    fn count_circled_ground(loop_map: &Array2D<i32>) -> usize {
-        println!("====");
-
-        loop_map
-            .elements_row_major_iter()
-            .filter(|v| **v == 0)
-            .count()
-    }
-
-    fn propagate_ground(array: &mut Array2D<i32>, x: i64, y: i64) {
-        for xx in -1..2 {
-            for yy in -1..2 {
-                if let Some(v) = array.get_mut((x + xx) as usize, (y + yy) as usize) {
-                    if *v == 0 {
-                        /* Propagated ground */
-                        *v = 7;
-
-                        Map::propagate_ground(array, x + xx, y + yy);
-                    }
-                }
-            }
-        }
-    }
-
     fn find_area(&self) -> usize {
         println!("{} x {}", self.w, self.h);
 
-        let mut prefilled = Array2D::filled_with(0, self.h as usize, self.w as usize);
+        let mut prefilled = Array2D::filled_with(b'.', self.h as usize, self.w as usize);
 
         /* Map the loop in the array */
         for lp in self.find_loop() {
-            let p = prefilled.get_mut(lp.1 as usize, lp.0 as usize).unwrap();
-            *p = 1;
+            prefilled
+                .set(
+                    lp.1 as usize,
+                    lp.0 as usize,
+                    self.d[lp.1 as usize][lp.0 as usize],
+                )
+                .unwrap();
         }
 
         Map::print_2d_map(&prefilled);
+        let vert_entries = [b'F', b'7', b'J', b'L', b'S', b'|'];
 
-        /* Now propagate borders */
-        for x in 0..self.h {
-            let l = self.d.get(x as usize).unwrap();
-            for y in [0, self.w - 1] {
-                Map::propagate_ground(&mut prefilled, x, y);
-            }
-        }
+        let mut inside_list: Vec<(usize, usize)> = Vec::new();
 
-        for x in [0, self.h - 1] {
-            let l = self.d.get(x as usize).unwrap();
-            for y in 0..self.w {
-                Map::propagate_ground(&mut prefilled, x, y);
-            }
-        }
-        Map::print_2d_map(&prefilled);
+        /* Over rows */
+        for (x, row) in prefilled.rows_iter().enumerate() {
+            let mut inside = false;
 
-        /* Now shadow all pipes */
-        for (x, l) in self.d.iter().enumerate() {
-            for (y, v) in l.iter().enumerate() {
-                if *v != b'.' {
-                    if let Some(vv) = prefilled.get_mut(x, y) {
-                        //*vv = 7;
-                    }
+            for (y, v) in row.enumerate() {
+                let mut ignored = true;
+
+                let prev = if y >= 1 {
+                    prefilled.get(x, y - 1).unwrap()
+                } else {
+                    &b'.'
+                };
+
+                let next = if y < prefilled.column_len() - 1 {
+                    prefilled.get(x, y + 1).unwrap()
+                } else {
+                    &b'.'
+                };
+
+                if *prev == b'.' || *next == b'.' {
+                    ignored = false;
+                }
+
+                if vert_entries.contains(v) && !ignored {
+                    inside = !inside;
+                }
+
+                println!(
+                    "{} ({} {}) {}",
+                    *v as char, *prev as char, *next as char, inside
+                );
+
+                if *v == b'.' && inside {
+                    inside_list.push((x, y));
                 }
             }
         }
 
-        Map::count_circled_ground(&prefilled)
+        /* No inside can be part of a non ground value */
+        let inside_list: Vec<(usize, usize)> = inside_list
+            .iter()
+            .filter(|v| self.d[v.0][v.1] == b'.')
+            .copied()
+            .collect();
+
+        for p in inside_list {
+            prefilled.set(p.0, p.1, b'H').unwrap();
+        }
+
+        Map::print_2d_map(&prefilled);
+
+        prefilled
+            .elements_row_major_iter()
+            .filter(|v| **v == b'H')
+            .count()
     }
 }
 
